@@ -4,6 +4,10 @@ set -euo pipefail
 # ViziQuer install script — sets up prerequisites and installs dependencies.
 # Idempotent: safe to run multiple times.
 # Supports: macOS (MacPorts, Homebrew) and Linux (apt, dnf, pacman).
+#
+# Usage:
+#   ./install.sh           # full install
+#   ./install.sh --mcp      # MCP client setup (after app is running)
 
 RED='\033[0;31m'
 GREEN='\033[0;32m'
@@ -13,6 +17,97 @@ NC='\033[0m'
 info()  { printf "${GREEN}[INFO]${NC}  %s\n" "$*"; }
 warn()  { printf "${YELLOW}[WARN]${NC}  %s\n" "$*"; }
 error() { printf "${RED}[ERROR]${NC} %s\n" "$*"; }
+
+VIZIQUER_PORT="${VIZIQUER_PORT:-3000}"
+API_KEY="${VIZIQUER_API_KEY:-}"
+
+mcp_setup() {
+  echo "======================================"
+  echo " ViziQuer MCP Client Setup"
+  echo "======================================"
+  echo ""
+
+  # Check if ViziQuer is running
+  if ! curl -sf "http://localhost:${VIZIQUER_PORT}/api/v1/health" >/dev/null 2>&1; then
+    warn "ViziQuer does not appear to be running on port ${VIZIQUER_PORT}."
+    warn "Start it first with: cd app && meteor run"
+    echo ""
+    info "Run './install.sh' first if prerequisites are not installed."
+    exit 1
+  fi
+  info "ViziQuer is running on port ${VIZIQUER_PORT}."
+
+  echo ""
+  echo "=== Step 1: Get an API Key ==="
+  echo ""
+
+  if [ -n "${API_KEY}" ]; then
+    info "Using VIZIQUER_API_KEY from environment."
+  else
+    warn "No VIZIQUER_API_KEY set."
+    echo ""
+    echo "  Generate one in your browser's JavaScript console while logged into ViziQuer:"
+    echo ""
+    echo "    Meteor.call('generateApiKey', { projectId: 'YOUR_PROJECT_ID', label: 'MCP' },"
+    echo "      (err, key) => console.log(err || 'Key: ' + key))"
+    echo ""
+    info "Then re-run with: VIZIQUER_API_KEY=vq_xxx $0 --mcp"
+  fi
+
+  echo ""
+  echo "=== Step 2: Test with curl ==="
+  echo ""
+  echo "  curl -s -X POST http://localhost:${VIZIQUER_PORT}/api/mcp \\"
+  echo "    -H 'Authorization: Bearer vq_YOUR_KEY' \\"
+  echo "    -H 'Content-Type: application/json' \\"
+  echo "    -d '{\"jsonrpc\":\"2.0\",\"id\":1,\"method\":\"tools/list\"}' | jq ."
+
+  echo ""
+  echo "=== Step 3: MCP Client Configuration ==="
+  echo ""
+  SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+  PROXY="${SCRIPT_DIR}/mcp-proxy.js"
+
+  if [ -f "${PROXY}" ]; then
+    echo "  Stdio proxy available at: ${PROXY}"
+    echo ""
+    echo "  Claude Desktop config (~/Library/Application Support/Claude/claude_desktop_config.json):"
+    echo ""
+    echo '  {'
+    echo '    "mcpServers": {'
+    echo '      "viziquer": {'
+    echo '        "command": "node",'
+    echo "        \"args\": [\"${PROXY}\", \"--url=http://localhost:${VIZIQUER_PORT}\"],"
+    echo '        "env": {'
+    echo '          "VIZIQUER_API_KEY": "vq_YOUR_API_KEY"'
+    echo '        }'
+    echo '      }'
+    echo '    }'
+    echo '  }'
+    echo ""
+    echo "  Cursor config (~/.cursor/mcp.json):"
+    echo ""
+    echo '  {'
+    echo '    "mcpServers": {'
+    echo '      "viziquer": {'
+    echo '        "command": "node",'
+    echo "        \"args\": [\"${PROXY}\", \"--url=http://localhost:${VIZIQUER_PORT}\"],"
+    echo '        "env": {'
+    echo '          "VIZIQUER_API_KEY": "vq_YOUR_API_KEY"'
+    echo '        }'
+    echo '      }'
+    echo '    }'
+    echo '  }'
+  fi
+
+  echo ""
+  echo "=== Available MCP Tools ==="
+  echo ""
+  echo "  sparql_execute  — Execute SPARQL queries"
+  echo "  list_diagrams   — List diagrams in a project"
+  echo "  get_diagram     — Get diagram details with elements"
+  echo "======================================"
+}
 
 require_npm() {
   # The Meteor installer also installs its own Node/npm, but we want a system
@@ -120,6 +215,11 @@ install_deps() {
 }
 
 main() {
+  if [ "${1:-}" = "--mcp" ]; then
+    mcp_setup
+    return
+  fi
+
   echo "======================================"
   echo " ViziQuer Install Script"
   echo "======================================"
@@ -138,7 +238,10 @@ main() {
   echo "   cd app && meteor run"
   echo ""
   echo " Then open: http://localhost:3000"
+  echo ""
+  echo " For MCP client setup:"
+  echo "   ./install.sh --mcp"
   echo "======================================"
 }
 
-main
+main "$@"
