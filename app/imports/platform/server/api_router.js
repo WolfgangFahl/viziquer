@@ -1,4 +1,5 @@
 import { fetch, Headers } from 'meteor/fetch';
+import crypto from 'crypto';
 
 import { validate_api_key } from './methods/api_keys.js';
 import {
@@ -7,7 +8,12 @@ import {
   Elements,
   Compartments,
   Services,
+  Tools,
+  ToolVersions,
+  Users,
+  ApiKeys,
 } from '../../db/platform/collections.js';
+import { generate_id } from '../../libs/platform/lib.js';
 
 function api_key_auth() {
   return async function (req, res, next) {
@@ -81,6 +87,48 @@ function setup_api_routes(app) {
 
   app.get('/v1/health', async function (req, res) {
     res.status(200).json({ status: 'ok', timestamp: new Date().toISOString() });
+  });
+
+  app.post('/v1/mcp-install', async function (req, res) {
+    const ip = req.headers['x-forwarded-for'] || req.connection.remoteAddress || '';
+    if (ip !== '127.0.0.1' && ip !== '::1' && ip !== '::ffff:127.0.0.1') {
+      return res.status(403).json({ error: 'localhost only' });
+    }
+    try {
+      let project = await Projects.findOneAsync({});
+      if (!project) {
+        const anyUser = await Users.findOneAsync({});
+        const userId = anyUser ? anyUser._id : null;
+        const tool = await Tools.findOneAsync({});
+        const projectId = generate_id();
+        await Projects.insertAsync({
+          _id: projectId,
+          name: 'Default',
+          toolId: tool ? tool._id : null,
+          createdAt: new Date(),
+          createdBy: userId,
+          archive: false,
+        });
+        project = { _id: projectId };
+      }
+
+      const API_KEY_PREFIX = 'vq_';
+      const raw_key = API_KEY_PREFIX + crypto.randomBytes(48).toString('base64url');
+      const hashed_key = crypto.createHash('sha256').update(raw_key).digest('hex');
+
+      await ApiKeys.insertAsync({
+        projectId: project._id,
+        apiKey: hashed_key,
+        label: 'MCP auto-generated',
+        createdAt: new Date(),
+        lastUsedAt: null,
+      });
+
+      return res.status(200).json({ apiKey: raw_key });
+    } catch (err) {
+      console.error('mcp-install error:', err);
+      return res.status(500).json({ error: err.message });
+    }
   });
 
   app.get('/v1/projects/:projectId/diagrams', auth, async function (req, res) {

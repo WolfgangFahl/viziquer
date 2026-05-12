@@ -1,8 +1,8 @@
 import { Meteor } from 'meteor/meteor';
 import crypto from 'crypto';
 
-import { ApiKeys } from '../../db/platform/collections.js';
-import { is_project_admin } from '../../libs/platform/user_rights.js';
+import { ApiKeys } from '../../../db/platform/collections.js';
+import { is_project_admin } from '../../../libs/platform/user_rights.js';
 
 const API_KEY_PREFIX = 'vq_';
 
