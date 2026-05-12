@@ -10,6 +10,8 @@ import { WebApp } from "meteor/webapp";
 
 import { CompartmentTypes } from "/imports/db/platform/collections";
 
+import { setup_api_routes } from "/imports/platform/server/api_router";
+
 // import
 import "/imports/platform/server/import/import_ajoo_configuration";
 import "/imports/platform/server/import/import_TDA_configuration";
@@ -21,6 +23,8 @@ import "/imports/platform/server/toolVersions";
 
 import "/imports/platform/server/methods/project/projects";
 import "/imports/platform/server/methods/project/project_users";
+
+import "/imports/platform/server/methods/api_keys";
 
 import "/imports/platform/server/methods/diagrams/diagrams";
 import "/imports/platform/server/methods/diagrams/elements";
@@ -121,7 +125,6 @@ Meteor.startup(async () => {
     try {
       const list = req.body;
 
-      // Call Meteor method asynchronously
       const diagram = await Meteor.callAsync("addPublicDiagram", list);
 
       const url = `/public/project/${diagram.projectId}/diagram/${diagram._id}/type/${diagram.diagramTypeId}/version/${diagram.versionId}`;
@@ -133,7 +136,8 @@ Meteor.startup(async () => {
     }
   });
 
-  // Mount it under /api
+  setup_api_routes(app);
+
   WebApp.connectHandlers.use("/api", app);
 
   console.log("End startup");

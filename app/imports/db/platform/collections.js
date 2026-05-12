@@ -81,6 +81,8 @@ const FoundDiagrams = new Mongo.Collection("FoundDiagrams");
 
 const Services = new Mongo.Collection("Services");
 
+const ApiKeys = new Mongo.Collection("ApiKeys");
+
 export {
   Users,
   Projects,
@@ -121,4 +123,5 @@ export {
   Searches,
   FoundDiagrams,
   Services,
+  ApiKeys,
 };
