@@ -34,6 +34,15 @@ function api_key_auth() {
   };
 }
 
+async function resolve_project_id(projectId, projectName) {
+  if (projectId) return projectId;
+  if (projectName) {
+    const project = await Projects.findOneAsync({ name: projectName });
+    if (project) return project._id;
+  }
+  return null;
+}
+
 async function execute_sparql_query_internal(query, endpoint, options = {}) {
   const headers = new Headers();
   headers.set('Accept', 'application/sparql-results+json, application/json');
@@ -279,9 +288,13 @@ function setup_api_routes(app) {
                   inputSchema: {
                     type: 'object',
                     properties: {
-                      projectId: { type: 'string', description: 'The project ID' },
+                      projectId: { type: 'string', description: 'The project ID (or use projectName instead)' },
+                      projectName: { type: 'string', description: 'The project name (resolved to ID internally)' },
                     },
-                    required: ['projectId'],
+                    anyOf: [
+                      { required: ['projectId'] },
+                      { required: ['projectName'] },
+                    ],
                   },
                 },
                 {
@@ -290,10 +303,14 @@ function setup_api_routes(app) {
                   inputSchema: {
                     type: 'object',
                     properties: {
-                      projectId: { type: 'string', description: 'The project ID' },
+                      projectId: { type: 'string', description: 'The project ID (or use projectName instead)' },
+                      projectName: { type: 'string', description: 'The project name (resolved to ID internally)' },
                       diagramId: { type: 'string', description: 'The diagram ID' },
                     },
-                    required: ['projectId', 'diagramId'],
+                    anyOf: [
+                      { required: ['projectId', 'diagramId'] },
+                      { required: ['projectName', 'diagramId'] },
+                    ],
                   },
                 },
               ],
@@ -342,9 +359,16 @@ function setup_api_routes(app) {
           }
 
           if (name === 'list_diagrams') {
-            const { projectId } = args || {};
+            const { projectId, projectName } = args || {};
+            const resolvedId = await resolve_project_id(projectId, projectName);
+            if (!resolvedId) {
+              return res.status(200).json({
+                jsonrpc: '2.0', id,
+                result: { content: [{ type: 'text', text: JSON.stringify({ error: 'projectId or projectName is required' }) }] },
+              });
+            }
             const diagrams = await Diagrams.find(
-              { projectId },
+              { projectId: resolvedId },
               { fields: { _id: 1, name: 1, diagramTypeId: 1, versionId: 1, createdAt: 1 } },
             ).fetchAsync();
             return res.status(200).json({
@@ -354,10 +378,17 @@ function setup_api_routes(app) {
           }
 
           if (name === 'get_diagram') {
-            const { projectId, diagramId } = args || {};
-            const diagram = await Diagrams.findOneAsync({ _id: diagramId, projectId });
-            const elements = await Elements.find({ diagramId, projectId }).fetchAsync();
-            const compartments = await Compartments.find({ diagramId, projectId }).fetchAsync();
+            const { projectId, projectName, diagramId } = args || {};
+            const resolvedId = await resolve_project_id(projectId, projectName);
+            if (!resolvedId) {
+              return res.status(200).json({
+                jsonrpc: '2.0', id,
+                result: { content: [{ type: 'text', text: JSON.stringify({ error: 'projectId or projectName is required' }) }] },
+              });
+            }
+            const diagram = await Diagrams.findOneAsync({ _id: diagramId, projectId: resolvedId });
+            const elements = await Elements.find({ diagramId, projectId: resolvedId }).fetchAsync();
+            const compartments = await Compartments.find({ diagramId, projectId: resolvedId }).fetchAsync();
             return res.status(200).json({
               jsonrpc: '2.0', id,
               result: { content: [{ type: 'text', text: JSON.stringify({ diagram, elements, compartments }, null, 2) }] },
@@ -387,4 +418,4 @@ function setup_api_routes(app) {
   });
 }
 
-export { api_key_auth, execute_sparql_query_internal, setup_api_routes };
+export { api_key_auth, resolve_project_id, execute_sparql_query_internal, setup_api_routes };
